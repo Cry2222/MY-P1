@@ -60,6 +60,14 @@ jobs:
         working-directory: mobile
         run: npx tsc --noEmit
 
+      # Runs the same Metro + Hermes bundling that Gradle's
+      # createBundleReleaseJsAndAssets task does, but in about a minute rather
+      # than seven minutes into a Gradle run. A missing module resolves here
+      # with a readable error instead of as a Java stack trace.
+      - name: Check the production JS bundle
+        working-directory: mobile
+        run: npx expo export --platform android --output-dir /tmp/bundle-check
+
       - name: Derive version from tag
         id: version
         run: |
