@@ -1,0 +1,43 @@
+{
+  "expo": {
+    "name": "MY-P1",
+    "slug": "myp1",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#0B0F14",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false,
+      "package": "com.cry2222.myp1",
+      "versionCode": 1,
+      "permissions": [
+        "INTERNET"
+      ],
+      "blockedPermissions": [
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.SYSTEM_ALERT_WINDOW",
+        "android.permission.VIBRATE",
+        "android.permission.RECORD_AUDIO"
+      ]
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "scheme": "myp1",
+    "backgroundColor": "#0B0F14",
+    "plugins": [
+      "expo-system-ui",
+      "./plugins/withLoopbackCleartext.js"
+    ],
+    "platforms": [
+      "android"
+    ]
+  }
+}

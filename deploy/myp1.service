@@ -1,0 +1,57 @@
+# systemd unit — the alternative to Docker for a plain VPS.
+#
+#   sudo cp deploy/myp1.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now myp1
+#   journalctl -u myp1 -f
+#
+# Assumes the repo at /opt/myp1 with a venv at /opt/myp1/.venv and a user
+# named `myp1`. Adjust the paths if yours differ.
+
+[Unit]
+Description=MY-P1 trading bot
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=myp1
+Group=myp1
+WorkingDirectory=/opt/myp1
+
+# Credentials live in a root-owned file the service user can read, never in
+# this unit — systemd unit files are world-readable.
+EnvironmentFile=/etc/myp1/myp1.env
+
+ExecStart=/opt/myp1/.venv/bin/python -m myp1
+
+# Always come back. A trading bot that stays down after a transient fault is
+# the failure mode that hurts: positions stop being managed while nobody is
+# watching.
+Restart=always
+RestartSec=10s
+
+# Give the shutdown path time to close the venue, the feed and the journal.
+KillSignal=SIGTERM
+TimeoutStopSec=30
+
+# Hardening — this process holds exchange API keys.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/myp1/data
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictNamespaces=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=myp1
+
+[Install]
+WantedBy=multi-user.target

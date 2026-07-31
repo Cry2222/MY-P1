@@ -25,8 +25,14 @@ myp1/
   execution/base.py      ExecutionVenue    — paper or live
   state/journal.py       durable record and control state
   gateway/telegram_bot.py  control surface; holds no trading logic
+  api/routes.py          route logic; BOTH servers delegate here
+  api/server.py          FastAPI transport (desktop/server)
+  api/lite.py            stdlib-only transport (on-device, no compiled deps)
   runner.py              the loop; owns no domain logic
   app.py                 composition root; the only module that picks implementations
+
+mobile/                  Expo app. Talks to the API over HTTP only.
+                         Never import across this boundary in either direction.
 ```
 
 A change that makes two components import each other has broken the design,
@@ -40,9 +46,24 @@ disables a limit — `RiskConfig.validate()` rejects zero and negative limits on
 purpose.
 
 **Live mode stays hard to reach.** Four independent things gate it: mode, the
-confirmation phrase, credentials, and a working Telegram kill switch. Do not
-add a shortcut, a default, or a "skip for testing" flag. `LiveVenue` requires
-`armed=True` for the same reason.
+confirmation phrase, credentials, and a reachable kill switch (Telegram or the
+control API). Do not add a shortcut, a default, or a "skip for testing" flag.
+`LiveVenue` requires `armed=True` for the same reason.
+
+**The API is an authenticated surface, always.** Every route except
+`/api/health` requires the bearer token, compared in constant time. Do not add
+an unauthenticated route that exposes account state, do not default the bind
+address off loopback, and do not lower the 24-character token minimum. If you
+add a route, add its authorisation test — the tests cover every route rather
+than sampling.
+
+**Two servers, one contract.** Behaviour goes in `api/routes.py`, never in a
+transport. `server.py` (FastAPI) is for desktops and servers; `lite.py`
+(stdlib only) is for phones, where pydantic-core cannot be compiled. Any change
+to a route must keep `tests/test_api_contract.py` green — it runs every
+assertion against both, which is what lets the mobile app be indifferent to
+which one it is talking to. Do not add a dependency to `lite.py`; its whole
+value is having none.
 
 **Pause and kill mean different things.** Pause blocks entries, allows exits.
 Kill blocks everything, exits included. Keep it that way — a pause that traps
@@ -62,8 +83,9 @@ commit messages, or logs. `.env` is gitignored; keep it that way.
 ## Testing
 
 ```bash
-pytest          # 85 tests, no network
+pytest                          # 196 tests, no network
 ruff check .
+cd mobile && npm run typecheck
 ```
 
 Every test runs offline. `ReplayMarketData` + `PaperVenue` exercise the real
@@ -94,10 +116,30 @@ register in `build_venue()`. If it is live-capable, gate it exactly as
 **A notifier** (Discord, email): the runner takes any
 `Callable[[str], Awaitable[None]]`. No runner changes needed.
 
+**An API route**: put the logic in `myp1/api/routes.py`, wire it into both
+`server.py` and `lite.py`, mirror its shape in `mobile/src/api/types.ts`, and
+add it to the contract tests.
+
+## Mobile app
+
+Colour rules there are not decoration. Profit is teal because green/red is
+unreadable under deuteranopia (ΔE 4.5, needs 8); teal/red measures 11.7. Teal
+and red mean *money* and nothing else — side and direction are words. Every
+figure carries a sign, every state carries a label, so colour is never the only
+channel. If you change a colour, re-validate it against the dark surface rather
+than eyeballing it; the numbers and the reasoning are in `mobile/src/theme.ts`.
+
+Do not use `Alert.alert` for anything that matters. It is a no-op with buttons
+under react-native-web, which once meant the kill switch silently did nothing
+in the web preview. `ConfirmDialog` behaves identically on every platform and
+can be driven by a test.
+
 ## Do not
 
 - Widen the Telegram allowlist beyond `owner_chat_id`
+- Add an unauthenticated API route that exposes account state
+- Bind the API off loopback by default, or document exposing it publicly
 - Log API keys, secrets, or full request bodies
 - Add automatic retry around order submission — a retried market order can
   double a position. Failures are journalled and surfaced instead.
-- Commit `data/`, `.env`, or anything under `workspace/`
+- Commit `data/`, `.env`, `node_modules/`, or anything under `workspace/`

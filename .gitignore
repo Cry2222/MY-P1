@@ -31,3 +31,20 @@ workspace/
 .DS_Store
 .idea/
 .vscode/
+
+# Mobile app
+node_modules/
+mobile/.expo/
+mobile/dist/
+mobile/web-build/
+*.tsbuildinfo
+
+# Generated native projects. `expo prebuild` recreates these from app.json and
+# the config plugins on every build, so committing them would mean two sources
+# of truth for the same settings.
+mobile/android/
+
+# Signing material — never commit a keystore or its passwords.
+*.keystore
+*.jks
+mobile/android/keystores/

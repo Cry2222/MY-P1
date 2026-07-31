@@ -12,11 +12,11 @@ import asyncio
 import logging
 import signal
 import sys
+from typing import TYPE_CHECKING, Any
 
 from .config import Config, ConfigError, load_config
 from .execution.base import ExecutionVenue
 from .execution.paper import PaperVenue
-from .gateway.telegram_bot import TelegramGateway
 from .marketdata.base import MarketDataSource
 from .marketdata.ccxt_source import CcxtMarketData
 from .risk.engine import RiskEngine
@@ -25,7 +25,31 @@ from .state.journal import Journal
 from .strategy.base import Strategy
 from .strategy.ema_cross import EmaCrossStrategy
 
+if TYPE_CHECKING:
+    from .gateway.telegram_bot import TelegramGateway
+
 log = logging.getLogger(__name__)
+
+
+def build_gateway(config: Config, runner: TradingRunner) -> TelegramGateway | None:
+    """Build the Telegram gateway, or None when it is unavailable.
+
+    Imported lazily because python-telegram-bot is an optional dependency: an
+    on-device install under Termux often cannot build it, and the mobile app
+    is the control surface there. A missing optional package must not stop the
+    bot from starting.
+    """
+    if not config.telegram.usable:
+        return None
+    try:
+        from .gateway.telegram_bot import TelegramGateway
+    except ImportError:
+        log.warning(
+            "Telegram is configured but python-telegram-bot is not installed — "
+            "continuing without it."
+        )
+        return None
+    return TelegramGateway(config.telegram, runner)
 
 
 def build_strategy(config: Config) -> Strategy:
@@ -81,12 +105,36 @@ async def run(config: Config | None = None) -> None:
         journal=journal,
     )
 
-    gateway: TelegramGateway | None = None
-    if config.telegram.usable:
-        gateway = TelegramGateway(config.telegram, runner)
+    gateway: Any = build_gateway(config, runner)
+    if gateway is not None:
         runner.notifier = gateway.send
-    else:
-        log.warning("Telegram disabled — no remote kill switch. Paper mode only.")
+    elif not config.api.enabled:
+        log.warning("No Telegram and no API — this bot has no remote kill switch.")
+
+    api_task: asyncio.Task | None = None
+    if config.api.enabled:
+        from .api import resolve_backend
+
+        backend = resolve_backend(config.api.server)
+        if backend == "fastapi":
+            from .api.server import create_app, serve
+
+            api_task = asyncio.create_task(
+                serve(create_app(runner, config.api), config.api.host, config.api.port)
+            )
+        else:
+            # No FastAPI, no uvicorn, no pydantic — the on-device path.
+            from .api.lite import serve as serve_lite
+
+            api_task = asyncio.create_task(serve_lite(runner, config.api))
+        log.info("control API backend: %s", backend)
+
+        if config.api.host not in {"127.0.0.1", "localhost", "::1"}:
+            log.warning(
+                "control API bound to %s — it is reachable beyond this host. "
+                "Put it behind TLS and a private network, not just the token.",
+                config.api.host,
+            )
 
     loop = asyncio.get_running_loop()
     stopping = asyncio.Event()
@@ -108,6 +156,12 @@ async def run(config: Config | None = None) -> None:
         await runner.run()
     finally:
         runner.stop()
+        if api_task is not None:
+            api_task.cancel()
+            try:
+                await api_task
+            except (asyncio.CancelledError, Exception):
+                pass
         if gateway is not None:
             try:
                 await gateway.stop()

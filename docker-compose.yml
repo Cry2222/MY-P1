@@ -1,0 +1,42 @@
+# Recommended deployment: one long-lived container on a small VPS.
+#
+#   cp .env.example .env    # edit it, keep it out of git
+#   docker compose up -d
+#   docker compose logs -f
+#
+# The API port is published to 127.0.0.1 only. Reaching it from a phone is a
+# transport decision — see docs/deployment.md — not something this file makes
+# for you by opening a port to the internet.
+
+services:
+  bot:
+    build: .
+    image: myp1:latest
+    container_name: myp1
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      MYP1_JOURNAL_PATH: /data/myp1.sqlite3
+      # Inside the container the API must listen on all interfaces for the
+      # published port to reach it. The publish rule below is what actually
+      # confines it to loopback on the host.
+      MYP1_API_HOST: 0.0.0.0
+    ports:
+      - "127.0.0.1:8333:8333"
+    volumes:
+      - myp1-data:/data
+    healthcheck:
+      test: ["CMD", "python", "-c",
+             "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8333/api/health', timeout=5).status==200 else 1)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+volumes:
+  myp1-data:

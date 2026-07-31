@@ -6,28 +6,44 @@ authoritative.
 
 ## Fast orientation
 
-- Pipeline: `market data → strategy → position diff → risk → execution → journal → telegram`
+- Pipeline: `market data → strategy → position diff → risk → execution → journal → telegram / API`
 - `myp1/runner.py` is the only module where components meet
 - `myp1/app.py` is the only module that chooses implementations
 - `myp1/config.py` is the only module that reads `os.environ`
+- `mobile/` talks to the API over HTTP only — never import across it
+- Two API servers share `myp1/api/routes.py`: `server.py` (FastAPI) and
+  `lite.py` (stdlib only, for phones). Logic goes in routes.py.
 
 ## Non-negotiables
 
 1. Every order passes `RiskEngine.assess`. No bypass path.
-2. Live mode needs mode + confirm phrase + credentials + a reachable Telegram
-   kill switch. Never add a shortcut.
+2. Live mode needs mode + confirm phrase + credentials + a reachable kill
+   switch (Telegram or the API). Never add a shortcut.
 3. `/pause` blocks entries only. `/kill` blocks everything including exits.
 4. Journal before notify.
-5. No secrets in the repo, in logs, or in commit messages.
+5. Every API route except `/api/health` requires the token. API stays on
+   loopback by default.
+6. Route behaviour lives in `api/routes.py` so both servers agree.
+   `tests/test_api_contract.py` runs against both and must stay green.
+7. No secrets in the repo, in logs, or in commit messages.
 
 ## Commands
 
 ```bash
-pytest                                              # 85 tests, offline
+pytest                                              # 196 tests, offline
 ruff check .
 python scripts/backtest.py --synthetic 600          # exercise the real pipeline
+python scripts/demo_server.py                       # real bot + API, replayed candles
+python scripts/demo_server.py --server lite         # the on-device path
 python -m myp1                                      # run (paper by default)
+cd mobile && npm run typecheck && npm start         # the app
 ```
+
+## Deployment
+
+Server: Docker Compose (`docs/deployment.md`). Phone: Termux, Android only
+(`docs/on-device.md`) — uses the lite API server since FastAPI's pydantic-core
+will not compile there.
 
 ## Acme
 

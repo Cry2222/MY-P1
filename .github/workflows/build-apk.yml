@@ -1,0 +1,182 @@
+name: Build Android APK
+
+# Turns the repository into an installable APK.
+#
+#   - Push a tag like v1.0.0  -> builds and attaches the APK to a GitHub Release
+#   - Run manually            -> builds and uploads the APK as a workflow artifact
+#
+# GitHub's ubuntu runners ship the Android SDK, so nothing needs installing
+# beyond the JDK and npm packages.
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      cleartext_hosts:
+        description: >-
+          Extra hosts the app may reach over plain HTTP, comma separated.
+          Loopback is always allowed. Add your Tailscale IP here if the bot
+          runs on a server rather than on the phone.
+        required: false
+        default: ''
+      build_type:
+        description: 'release (optimised) or debug (faster, larger)'
+        required: false
+        default: 'release'
+        type: choice
+        options: [release, debug]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Install dependencies
+        working-directory: mobile
+        run: npm ci
+
+      - name: Type check
+        working-directory: mobile
+        run: npx tsc --noEmit
+
+      - name: Derive version from tag
+        id: version
+        run: |
+          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            VERSION="${GITHUB_REF#refs/tags/v}"
+          else
+            VERSION="0.0.0-dev"
+          fi
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "Building version ${VERSION}"
+
+      - name: Stamp version into app.json
+        if: startsWith(github.ref, 'refs/tags/')
+        working-directory: mobile
+        run: |
+          node -e "
+            const fs = require('fs');
+            const p = 'app.json';
+            const d = JSON.parse(fs.readFileSync(p, 'utf8'));
+            d.expo.version = '${{ steps.version.outputs.version }}';
+            // versionCode must increase for Android to treat a build as an
+            // upgrade. The run number is monotonic per repository.
+            d.expo.android.versionCode = ${{ github.run_number }};
+            fs.writeFileSync(p, JSON.stringify(d, null, 2) + '\n');
+            console.log('version', d.expo.version, 'versionCode', d.expo.android.versionCode);
+          "
+
+      - name: Generate native project
+        working-directory: mobile
+        env:
+          MYP1_CLEARTEXT_HOSTS: ${{ github.event.inputs.cleartext_hosts }}
+        run: npx expo prebuild --platform android --no-install
+
+      - name: Decode signing keystore
+        id: keystore
+        working-directory: mobile
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          if [ -z "${KEYSTORE_B64}" ]; then
+            echo "No ANDROID_KEYSTORE_BASE64 secret — using the debug key."
+            echo "signed=debug" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "${KEYSTORE_B64}" | base64 -d > android/app/release.keystore
+          echo "signed=release" >> "$GITHUB_OUTPUT"
+
+      - name: Configure release signing
+        if: steps.keystore.outputs.signed == 'release'
+        working-directory: mobile
+        env:
+          STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          {
+            echo "MYP1_UPLOAD_STORE_FILE=release.keystore"
+            echo "MYP1_UPLOAD_STORE_PASSWORD=${STORE_PASSWORD}"
+            echo "MYP1_UPLOAD_KEY_ALIAS=${KEY_ALIAS}"
+            echo "MYP1_UPLOAD_KEY_PASSWORD=${KEY_PASSWORD}"
+          } >> android/gradle.properties
+          python3 scripts/configure-release-signing.py android/app/build.gradle
+
+      - name: Build APK
+        working-directory: mobile/android
+        run: |
+          TASK="assembleRelease"
+          [ "${{ github.event.inputs.build_type }}" = "debug" ] && TASK="assembleDebug"
+          echo "Running ./gradlew ${TASK}"
+          chmod +x ./gradlew
+          ./gradlew "${TASK}" --no-daemon --stacktrace
+
+      - name: Locate and name the APK
+        id: apk
+        working-directory: mobile
+        run: |
+          APK="$(find android/app/build/outputs/apk -name '*.apk' -print -quit)"
+          if [ -z "${APK}" ]; then
+            echo "No APK produced" >&2
+            find android/app/build/outputs -type f >&2 || true
+            exit 1
+          fi
+          NAME="myp1-${{ steps.version.outputs.version }}-${{ steps.keystore.outputs.signed }}.apk"
+          cp "${APK}" "${NAME}"
+          echo "path=mobile/${NAME}" >> "$GITHUB_OUTPUT"
+          echo "name=${NAME}" >> "$GITHUB_OUTPUT"
+          ls -lh "${NAME}"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.apk.outputs.name }}
+          path: ${{ steps.apk.outputs.path }}
+          retention-days: 90
+          if-no-files-found: error
+
+      - name: Attach to release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ steps.apk.outputs.path }}
+          generate_release_notes: true
+          body: |
+            ## MY-P1 ${{ steps.version.outputs.version }}
+
+            Android APK for the trading bot's control app.
+
+            **Install**: download the `.apk` below, open it on your phone, and
+            allow installation from unknown sources when prompted.
+
+            **Connect**: the app needs a running bot with its control API
+            enabled. Set `MYP1_API_ENABLED=true` and `MYP1_API_TOKEN` in the
+            bot's `.env`, then enter the address and token in the app.
+
+            - Bot on this phone (Termux): `http://127.0.0.1:8333` — see `docs/on-device.md`
+            - Bot on a server: use its Tailscale address — see `docs/deployment.md`
+
+            Signing: `${{ steps.keystore.outputs.signed }}`. A debug-signed APK
+            installs fine but cannot be upgraded in place by a release-signed
+            one — uninstall first if you switch.
