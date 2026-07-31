@@ -11,11 +11,12 @@ for running the suite and pointing Helix at this repository.
 ## What it does
 
 Polls an exchange for candles, runs a strategy, sizes the trade through a risk
-engine, executes it on a venue, journals it, and reports to Telegram. The loop
-runs unattended; Telegram is how you watch it and how you stop it.
+engine, executes it on a venue, journals it, and reports out. The loop runs
+unattended; the phone app and Telegram are how you watch it and stop it.
 
 ```
-market data ─→ strategy ─→ position diff ─→ risk ─→ execution ─→ journal ─→ telegram
+market data ─→ strategy ─→ position diff ─→ risk ─→ execution ─→ journal ─┬─→ telegram
+                                                                          └─→ control API ─→ mobile app
 ```
 
 Each arrow is a seam. Every component behind one is swappable without touching
@@ -30,6 +31,8 @@ first" a config change rather than a rewrite.
 | Execution | `myp1/execution` | paper simulator or live exchange |
 | Journal | `myp1/state` | SQLite today; the runner only uses the interface |
 | Gateway | `myp1/gateway` | Telegram today; the runner takes any async notifier |
+| Control API | `myp1/api` | HTTP surface the mobile app talks to |
+| Mobile app | `mobile/` | separate Expo app; the bot never imports it |
 
 `myp1/runner.py` is the only module where these meet. `myp1/app.py` is the only
 module that knows which concrete implementation each seam gets.
@@ -81,6 +84,39 @@ Only that one chat id can issue commands. Everything else is logged and dropped.
 The bot also pushes a message on every fill, every failed order, and every
 kill-switch trip.
 
+### Mobile app
+
+A React Native (Expo) app in [`mobile/`](mobile/) gives the same controls plus
+a price chart, position detail and fill history on one screen.
+
+```bash
+# 1. enable the API on the bot
+MYP1_API_ENABLED=true
+MYP1_API_TOKEN=$(python -c "import secrets; print(secrets.token_urlsafe(32))")
+
+# 2. run the app
+cd mobile && npm install && npm start     # scan the QR with Expo Go
+```
+
+To develop the app with no exchange and no keys, `scripts/demo_server.py` runs
+the real bot and real API against replayed candles.
+
+The API binds to loopback by default. Reaching it from a phone is a transport
+decision — Tailscale is the recommended answer, covered in
+[`docs/deployment.md`](docs/deployment.md). A bearer token is authentication,
+not a reason to expose the port.
+
+| Route | Purpose |
+|---|---|
+| `GET /api/health` | liveness, no token, leaks nothing |
+| `GET /api/status` | full runner state |
+| `GET /api/position` `GET /api/pnl` `GET /api/fills` | reads |
+| `GET /api/candles` | recent candles for the chart |
+| `POST /api/control/{pause,resume,kill,revive}` | control |
+
+Enabling the API counts as a reachable kill switch for live mode, the same as
+Telegram does.
+
 ## Risk controls
 
 Every order passes through `myp1/risk/engine.py`. There is no bypass path, and
@@ -116,7 +152,7 @@ MYP1_MODE=live
 MYP1_LIVE_CONFIRM=i-understand-this-trades-real-money
 MYP1_API_KEY=...
 MYP1_API_SECRET=...
-# plus a working Telegram config — the kill switch must be reachable
+# plus a reachable kill switch — Telegram or the control API
 ```
 
 On the exchange, create keys with **trading enabled, withdrawals disabled**,
@@ -130,11 +166,26 @@ tells you about the past; paper mode tells you about your plumbing.
 > the backtest above underperforms buy-and-hold on a trending series, which is
 > the honest result for a naive crossover. Replace it with your own.
 
+## Deploying
+
+The bot must not stop while it holds a position, so it belongs on a server, not
+a laptop. Docker Compose on a small VPS is the recommended setup:
+
+```bash
+cp .env.example .env && nano .env
+docker compose up -d
+```
+
+A `systemd` unit is in [`deploy/`](deploy/) if you would rather not use Docker.
+Full guide, including the pre-live checklist:
+[`docs/deployment.md`](docs/deployment.md).
+
 ## Development
 
 ```bash
-pytest              # 85 tests, no network required
+pytest              # 118 tests, no network required
 ruff check .
+cd mobile && npm run typecheck
 ```
 
 The test suite runs the entire pipeline through the replay source and paper

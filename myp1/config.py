@@ -74,6 +74,36 @@ class RiskConfig:
 
 
 @dataclass(frozen=True)
+class ApiConfig:
+    """HTTP control surface for the mobile app.
+
+    Off by default. The bind address defaults to loopback because this API can
+    halt trading — exposing it needs a deliberate decision plus a transport
+    that authenticates, not just an open port.
+    """
+
+    enabled: bool = False
+    host: str = "127.0.0.1"
+    port: int = 8333
+    token: str | None = None
+    docs_enabled: bool = False
+    cors_origins: tuple[str, ...] = ()
+
+    def validate(self) -> None:
+        if not self.enabled:
+            return
+        if not self.token:
+            raise ConfigError(
+                "MYP1_API_ENABLED=true requires MYP1_API_TOKEN. Generate one with:\n"
+                '  python -c "import secrets; print(secrets.token_urlsafe(32))"'
+            )
+        if len(self.token) < 24:
+            raise ConfigError("MYP1_API_TOKEN must be at least 24 characters")
+        if not 1 <= self.port <= 65535:
+            raise ConfigError(f"MYP1_API_PORT out of range: {self.port}")
+
+
+@dataclass(frozen=True)
 class TelegramConfig:
     token: str | None = None
     owner_chat_id: int | None = None
@@ -109,10 +139,16 @@ class Config:
 
     risk: RiskConfig = field(default_factory=RiskConfig)
     telegram: TelegramConfig = field(default_factory=TelegramConfig)
+    api: ApiConfig = field(default_factory=ApiConfig)
 
     @property
     def is_live(self) -> bool:
         return self.mode == "live"
+
+    @property
+    def has_remote_stop(self) -> bool:
+        """Can a human halt this bot without shell access to the host?"""
+        return self.telegram.usable or self.api.enabled
 
     def validate(self) -> None:
         if self.mode not in {"paper", "live"}:
@@ -122,6 +158,7 @@ class Config:
         if self.poll_seconds <= 0:
             raise ConfigError("MYP1_POLL_SECONDS must be > 0")
         self.risk.validate()
+        self.api.validate()
 
         if self.is_live:
             # Live mode needs three independent things to line up. Any one of
@@ -133,11 +170,12 @@ class Config:
                 )
             if not (self.api_key and self.api_secret):
                 raise ConfigError("Live mode requires MYP1_API_KEY and MYP1_API_SECRET")
-            if not self.telegram.usable:
+            if not self.has_remote_stop:
                 raise ConfigError(
-                    "Live mode requires a working Telegram gateway so the kill "
-                    "switch is reachable. Set MYP1_TELEGRAM_TOKEN and "
-                    "MYP1_TELEGRAM_OWNER_ID."
+                    "Live mode requires a reachable kill switch. Enable either "
+                    "the Telegram gateway (MYP1_TELEGRAM_TOKEN + "
+                    "MYP1_TELEGRAM_OWNER_ID) or the control API "
+                    "(MYP1_API_ENABLED=true + MYP1_API_TOKEN)."
                 )
 
 
@@ -178,6 +216,18 @@ def load_config() -> Config:
             token=_env("MYP1_TELEGRAM_TOKEN"),
             owner_chat_id=owner_id,
             enabled=_bool("MYP1_TELEGRAM_ENABLED", True),
+        ),
+        api=ApiConfig(
+            enabled=_bool("MYP1_API_ENABLED", False),
+            host=_env("MYP1_API_HOST", "127.0.0.1") or "127.0.0.1",
+            port=_int("MYP1_API_PORT", 8333),
+            token=_env("MYP1_API_TOKEN"),
+            docs_enabled=_bool("MYP1_API_DOCS", False),
+            cors_origins=tuple(
+                origin.strip()
+                for origin in (_env("MYP1_API_CORS_ORIGINS", "") or "").split(",")
+                if origin.strip()
+            ),
         ),
     )
     config.validate()

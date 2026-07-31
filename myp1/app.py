@@ -85,8 +85,22 @@ async def run(config: Config | None = None) -> None:
     if config.telegram.usable:
         gateway = TelegramGateway(config.telegram, runner)
         runner.notifier = gateway.send
-    else:
-        log.warning("Telegram disabled — no remote kill switch. Paper mode only.")
+    elif not config.api.enabled:
+        log.warning("No Telegram and no API — this bot has no remote kill switch.")
+
+    api_task: asyncio.Task | None = None
+    if config.api.enabled:
+        from .api.server import create_app, serve
+
+        api_task = asyncio.create_task(
+            serve(create_app(runner, config.api), config.api.host, config.api.port)
+        )
+        if config.api.host not in {"127.0.0.1", "localhost", "::1"}:
+            log.warning(
+                "control API bound to %s — it is reachable beyond this host. "
+                "Put it behind TLS and a private network, not just the token.",
+                config.api.host,
+            )
 
     loop = asyncio.get_running_loop()
     stopping = asyncio.Event()
@@ -108,6 +122,12 @@ async def run(config: Config | None = None) -> None:
         await runner.run()
     finally:
         runner.stop()
+        if api_task is not None:
+            api_task.cancel()
+            try:
+                await api_task
+            except (asyncio.CancelledError, Exception):
+                pass
         if gateway is not None:
             try:
                 await gateway.stop()

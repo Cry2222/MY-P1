@@ -31,3 +31,10 @@ workspace/
 .DS_Store
 .idea/
 .vscode/
+
+# Mobile app
+node_modules/
+mobile/.expo/
+mobile/dist/
+mobile/web-build/
+*.tsbuildinfo
