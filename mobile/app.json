@@ -6,10 +6,6 @@
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
-    "ios": {
-      "supportsTablet": true,
-      "bundleIdentifier": "com.cry2222.myp1"
-    },
     "android": {
       "adaptiveIcon": {
         "backgroundColor": "#0B0F14",
@@ -19,7 +15,17 @@
       },
       "predictiveBackGestureEnabled": false,
       "package": "com.cry2222.myp1",
-      "versionCode": 1
+      "versionCode": 1,
+      "permissions": [
+        "INTERNET"
+      ],
+      "blockedPermissions": [
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.SYSTEM_ALERT_WINDOW",
+        "android.permission.VIBRATE",
+        "android.permission.RECORD_AUDIO"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -29,6 +35,9 @@
     "plugins": [
       "expo-system-ui",
       "./plugins/withLoopbackCleartext.js"
+    ],
+    "platforms": [
+      "android"
     ]
   }
 }

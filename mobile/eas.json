@@ -1,36 +1,23 @@
 {
   "cli": {
     "version": ">= 5.0.0",
-    "appVersionSource": "remote"
+    "appVersionSource": "local"
   },
   "build": {
     "preview": {
-      "//": "Sideloadable APK. This is the one you want for a personal tool — it installs directly with no Play Store listing.",
+      "//": "Sideloadable Android APK \u2014 the only profile this project needs. Personal use, no Play Store listing.",
       "android": {
         "buildType": "apk",
         "gradleCommand": ":app:assembleRelease"
       },
-      "distribution": "internal",
-      "channel": "preview"
+      "distribution": "internal"
     },
     "preview-local": {
-      "//": "Same APK, built on your own machine. Needs the Android SDK installed locally; run with `eas build -p android --profile preview-local --local`.",
+      "//": "Same APK built on your own machine. Needs the Android SDK; run `eas build -p android --profile preview-local --local`.",
       "android": {
         "buildType": "apk"
       },
-      "distribution": "internal",
-      "local": true
-    },
-    "production": {
-      "//": "App Bundle for a Play Store listing. Not needed for sideloading.",
-      "android": {
-        "buildType": "app-bundle"
-      },
-      "channel": "production",
-      "autoIncrement": true
+      "distribution": "internal"
     }
-  },
-  "submit": {
-    "production": {}
   }
 }

@@ -1,6 +1,9 @@
 # MY-P1 mobile
 
-React Native (Expo) app for watching and controlling the bot from a phone.
+React Native (Expo) app for watching and controlling the bot from an Android
+phone. **Android only** — the bot itself cannot run on iOS (no Termux
+equivalent, and iOS terminates background processes), so a companion iOS app
+would have nothing to pair with.
 
 It talks to MY-P1 only over the HTTP control API — no shared code, no shared
 database. That is the same replaceable-seam rule the bot uses internally: the
@@ -35,8 +38,8 @@ candles, so the app sees a genuinely trading bot.
 
 **Setup** — server address and API token. The connection is verified against
 the live bot before it is saved, so a typo fails here rather than as a dead
-dashboard later. The token goes in the device keystore (Keychain on iOS,
-EncryptedSharedPreferences on Android) via `expo-secure-store`.
+dashboard later. The token goes in the Android keystore
+(EncryptedSharedPreferences) via `expo-secure-store`.
 
 **Dashboard** — polls every 6s and on app foreground. Ordered the way it gets
 read: state badges, then net P&L as a hero figure, then the price sparkline,

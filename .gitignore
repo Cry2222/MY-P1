@@ -43,7 +43,6 @@ mobile/web-build/
 # the config plugins on every build, so committing them would mean two sources
 # of truth for the same settings.
 mobile/android/
-mobile/ios/
 
 # Signing material — never commit a keystore or its passwords.
 *.keystore

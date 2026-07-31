@@ -3,6 +3,9 @@
 Three ways to turn this repository into an installable Android app, in the
 order most people should try them.
 
+**Android only.** There is no iOS build: the bot itself cannot run on iOS, so
+there would be nothing for an iOS app to pair with locally.
+
 The app is only a control surface — it needs a running bot with its control API
 enabled. Building the APK does not give you a trading bot on its own.
 
@@ -72,8 +75,8 @@ first; Android refuses to replace an app with one signed by a different key.
 
 ## 2. EAS Build (Expo's cloud)
 
-Useful if you already have an Expo account, and the only practical route for
-iOS.
+Useful if you already have an Expo account and would rather not manage the
+workflow.
 
 ```bash
 npm install -g eas-cli
@@ -82,9 +85,9 @@ cd mobile
 eas build --platform android --profile preview
 ```
 
-`preview` produces a sideloadable APK. `production` produces an App Bundle for
-a Play Store listing, which you do not need for a personal tool. Profiles are
-in [`mobile/eas.json`](../mobile/eas.json).
+`preview` produces a sideloadable APK — the only profile this project defines,
+since a Play Store listing is not part of a personal tool. Profiles are in
+[`mobile/eas.json`](../mobile/eas.json).
 
 EAS manages signing keys for you, which is convenient but means the key lives
 in Expo's account rather than yours.

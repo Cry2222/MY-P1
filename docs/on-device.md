@@ -122,7 +122,6 @@ chmod +x ~/.termux/boot/start-myp1.sh
 | Survives phone reboot | with Termux:Boot | n/a |
 | Survives dead battery | **no** | yes |
 | Survives OS killing it | mitigated, not solved | yes |
-| Works on iOS | **no** | yes (as client) |
 | Network exposure | **none** | loopback + Tailscale |
 | Battery cost | noticeable | none |
 
@@ -153,9 +152,9 @@ another device is how you get out.
 
 **App says "Cannot reach the bot"**
 Check the bot is running (`ps aux | grep myp1` in Termux) and that the address
-is exactly `http://127.0.0.1:8333`. If you built a standalone APK rather than
-using Expo Go, cleartext HTTP to localhost must be permitted — `app.json`
-already sets this, but a custom build may have overridden it.
+is exactly `http://127.0.0.1:8333`. Loopback cleartext is permitted by the
+network security config the build plugin writes, so an APK from this repo's
+workflow works as-is; a hand-rolled build that skipped the plugin will not.
 
 **Bot stops when the screen goes off**
 The wake lock is not held, or battery optimisation is still on. Check the
