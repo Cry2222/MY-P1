@@ -101,6 +101,17 @@ cd mobile && npm install && npm start     # scan the QR with Expo Go
 To develop the app with no exchange and no keys, `scripts/demo_server.py` runs
 the real bot and real API against replayed candles.
 
+**To get an installable APK**, tag a release and GitHub Actions builds it:
+
+```bash
+git tag v1.0.0 && git push origin v1.0.0
+```
+
+The APK is attached to the GitHub Release. You can also run the workflow
+manually from the Actions tab without tagging. Full guide, including signing
+and the `cleartext_hosts` input you need when the bot runs on a server:
+[`docs/building-the-app.md`](docs/building-the-app.md).
+
 The API binds to loopback by default. Reaching it from a phone is a transport
 decision — Tailscale is the recommended answer, covered in
 [`docs/deployment.md`](docs/deployment.md). A bearer token is authentication,

@@ -79,6 +79,15 @@ async function request<T>(
     if (error instanceof Error && error.name === 'AbortError') {
       throw new ApiError('Timed out — is the bot reachable from this network?');
     }
+    // Android blocks plain HTTP to hosts outside the build's network security
+    // config. Without naming it, this surfaces as a generic network failure
+    // and is very hard to diagnose from the phone.
+    if (error instanceof Error && /cleartext/i.test(error.message)) {
+      throw new ApiError(
+        'Android blocked plain HTTP to this address. Rebuild the app with '
+          + 'MYP1_CLEARTEXT_HOSTS set to this host, or use HTTPS.',
+      );
+    }
     throw new ApiError('Cannot reach the bot. Check the address and your VPN.');
   } finally {
     clearTimeout(timer);
