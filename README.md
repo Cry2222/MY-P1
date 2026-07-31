@@ -86,8 +86,15 @@ kill-switch trip.
 
 ### Mobile app
 
-A React Native (Expo) app in [`mobile/`](mobile/) gives the same controls plus
-a price chart, position detail and fill history on one screen.
+The Android app in [`mobile/`](mobile/) is self-contained: it carries its own
+TypeScript port of the engine and paper-trades on the phone with nothing else
+installed. Install the APK, tap *Run on this phone*, done.
+
+It can also drive this Python bot over the control API instead — the mode is a
+choice on first run. A phone stops trading when its battery dies; a server does
+not, which is why both exist.
+
+Using it as a remote for this bot:
 
 ```bash
 # 1. enable the API on the bot

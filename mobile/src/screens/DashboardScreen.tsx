@@ -2,14 +2,12 @@
  * The screen you actually look at.
  *
  * Layout order is deliberate and matches how the screen gets read: state
- * first (is it running, is it live), then the money, then the chart, then
+ * first (is it running, is it trading), then the money, then the chart, then
  * controls, then history. Someone glancing at a lock screen should get the
  * answer from the top two blocks alone.
  *
- * Polling rather than a socket: a phone's connection drops constantly, and a
- * poll that fails is a stale badge, while a dead socket is a screen that
- * silently lies. The staleness indicator is the whole point — it is worse to
- * show confident wrong numbers than to admit the last update was 40s ago.
+ * It reads through `BotSource` and does not know whether the bot is the engine
+ * inside this app or a Python bot on a server.
  */
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
@@ -22,8 +20,9 @@ import {
   View,
 } from 'react-native';
 
-import { ApiError, api } from '../api/client';
-import type { Candle, Connection, FillRow, Status } from '../api/types';
+import { ApiError } from '../api/client';
+import type { Candle } from '../engine/models';
+import type { EngineStatus } from '../engine/runner';
 import { ConfirmDialog, type ConfirmSpec } from '../components/ConfirmDialog';
 import { Sparkline } from '../components/Sparkline';
 import {
@@ -34,6 +33,7 @@ import {
   Row,
   SectionTitle,
 } from '../components/primitives';
+import type { BotSource, FillView } from '../source/types';
 import {
   colors,
   compactDuration,
@@ -44,27 +44,27 @@ import {
   timeAgo,
 } from '../theme';
 
-const POLL_MS = 6000;
+const POLL_MS = 5000;
 const STALE_MS = 20000;
 
 export function DashboardScreen({
-  connection,
-  onAuthFailure,
-  onDisconnect,
+  source,
+  onOpenSettings,
+  onSwitchMode,
 }: {
-  connection: Connection;
-  onAuthFailure: () => void;
-  onDisconnect: () => void;
+  source: BotSource;
+  onOpenSettings: () => void;
+  onSwitchMode: () => void;
 }) {
-  const [status, setStatus] = useState<Status | null>(null);
-  const [fills, setFills] = useState<FillRow[]>([]);
+  const [status, setStatus] = useState<EngineStatus | null>(null);
+  const [fills, setFills] = useState<FillView[]>([]);
   const [candles, setCandles] = useState<Candle[]>([]);
   const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
   const [updatedAt, setUpdatedAt] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
   const [pending, setPending] = useState<string | null>(null);
   const [confirm, setConfirm] = useState<ConfirmSpec | null>(null);
-  const [notice, setNotice] = useState('');
   const [, setTick] = useState(0);
 
   const mounted = useRef(true);
@@ -77,48 +77,43 @@ export function DashboardScreen({
 
   const load = useCallback(async () => {
     try {
-      const [nextStatus, fillsBody] = await Promise.all([
-        api.status(connection),
-        api.fills(connection, 15),
-      ]);
+      const [nextStatus, nextFills] = await Promise.all([source.status(), source.fills(15)]);
       if (!mounted.current) return;
       setStatus(nextStatus);
-      setFills(fillsBody.fills);
+      setFills(nextFills);
       setUpdatedAt(Date.now());
       setError('');
     } catch (e) {
       if (!mounted.current) return;
-      if (e instanceof ApiError && e.isAuthError) {
-        onAuthFailure();
-        return;
-      }
-      setError(e instanceof ApiError ? e.message : 'Update failed');
+      setError(e instanceof ApiError || e instanceof Error ? e.message : 'Update failed');
     }
 
     // Candles come from the exchange and can fail on their own while the rest
     // of the bot is healthy, so a chart outage must not blank the dashboard.
     try {
-      const series = await api.candles(connection, 90);
-      if (mounted.current) setCandles(series.candles);
+      const series = await source.candles(90);
+      if (mounted.current) setCandles(series);
     } catch {
       /* chart stays as-is */
     }
-  }, [connection, onAuthFailure]);
+  }, [source]);
 
   useEffect(() => {
     load();
     const poll = setInterval(load, POLL_MS);
     // Re-tick every second so "updated 12s ago" stays honest between polls.
     const clock = setInterval(() => setTick((n) => n + 1), 1000);
-    const sub = AppState.addEventListener('change', (state) => {
-      if (state === 'active') load();
+    const appState = AppState.addEventListener('change', (s) => {
+      if (s === 'active') load();
     });
+    const unsubscribe = source.subscribe?.(() => load());
     return () => {
       clearInterval(poll);
       clearInterval(clock);
-      sub.remove();
+      appState.remove();
+      unsubscribe?.();
     };
-  }, [load]);
+  }, [load, source]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -126,17 +121,15 @@ export function DashboardScreen({
     setRefreshing(false);
   }, [load]);
 
-  async function control(
-    action: 'pause' | 'resume' | 'kill' | 'revive',
-  ): Promise<void> {
-    setPending(action);
+  async function act(name: string, fn: () => Promise<void>, message?: string) {
+    setPending(name);
     setNotice('');
     try {
-      const result = await api[action](connection);
+      await fn();
       await load();
-      if (action === 'kill') setNotice(result.message);
+      if (message) setNotice(message);
     } catch (e) {
-      setNotice(e instanceof ApiError ? e.message : 'Request failed');
+      setNotice(e instanceof Error ? e.message : 'Request failed');
     } finally {
       setPending(null);
     }
@@ -147,21 +140,12 @@ export function DashboardScreen({
     setConfirm({
       title: 'Engage kill switch?',
       body:
-        'This halts ALL orders including exits. Any open position becomes '
-        + 'yours to close by hand on the exchange.',
+        'This halts ALL orders including exits. Any open position stays open '
+        + 'until you close it yourself.',
       confirmLabel: 'Kill',
       variant: 'danger',
-      onConfirm: () => control('kill'),
-    });
-  }
-
-  function confirmDisconnect() {
-    setConfirm({
-      title: 'Forget this connection?',
-      body: 'The saved token will be removed from this device.',
-      confirmLabel: 'Forget',
-      variant: 'danger',
-      onConfirm: onDisconnect,
+      onConfirm: () =>
+        act('kill', () => source.kill(), 'Kill switch engaged. No orders will be placed.'),
     });
   }
 
@@ -170,9 +154,7 @@ export function DashboardScreen({
   if (!status) {
     return (
       <View style={styles.loading}>
-        <Text style={styles.loadingText}>
-          {error || 'Connecting to your bot…'}
-        </Text>
+        <Text style={styles.loadingText}>{error || 'Starting…'}</Text>
         {error ? (
           <Button label="Retry" variant="primary" onPress={load} style={styles.retry} />
         ) : null}
@@ -180,61 +162,57 @@ export function DashboardScreen({
     );
   }
 
-  const net = status.realized_total + status.unrealized;
+  const net = status.realizedTotal + status.unrealized;
+  const isLocal = source.kind === 'local';
 
   return (
     <ScrollView
       style={styles.screen}
       contentContainerStyle={styles.content}
       refreshControl={
-        <RefreshControl
-          refreshing={refreshing}
-          onRefresh={onRefresh}
-          tintColor={colors.accent}
-        />
+        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.accent} />
       }
     >
       {/* State — the first thing read */}
       <View style={styles.badges}>
-        <Badge
-          label={status.mode === 'live' ? 'LIVE' : 'PAPER'}
-          color={status.mode === 'live' ? colors.live : colors.paper}
-          filled={status.mode === 'live'}
-        />
+        <Badge label="PAPER" color={colors.paper} />
         {status.killed ? (
           <Badge label="KILLED" color={colors.danger} filled />
         ) : status.paused ? (
           <Badge label="PAUSED" color={colors.warn} />
+        ) : status.running ? (
+          <Badge label="RUNNING" color={colors.profit} />
         ) : (
-          <Badge label="ACTIVE" color={colors.profit} />
+          <Badge label="STOPPED" color={colors.textMuted} />
         )}
         {stale ? <Badge label="STALE" color={colors.textMuted} /> : null}
       </View>
 
+      <Text style={styles.sourceLine}>
+        {source.label} · {status.exchange} · {status.symbol} {status.timeframe}
+      </Text>
+
       {error ? <Text style={styles.errorBanner}>{error}</Text> : null}
+      {status.lastError && !error ? (
+        <Text style={styles.errorBanner}>{status.lastError}</Text>
+      ) : null}
       {notice ? <Text style={styles.notice}>{notice}</Text> : null}
 
       {/* The money — hero figure */}
       <Card>
         <Text style={styles.heroLabel}>Net P&amp;L</Text>
-        <Text style={[styles.hero, { color: pnlColor(net) }]}>
-          {signed(net, 2)}
-        </Text>
+        <Text style={[styles.hero, { color: pnlColor(net) }]}>{signed(net, 2)}</Text>
         <View style={styles.heroSplit}>
           <View style={styles.heroCell}>
             <Text style={styles.heroCellLabel}>Today</Text>
-            <Text
-              style={[styles.heroCellValue, { color: pnlColor(status.realized_today) }]}
-            >
-              {signed(status.realized_today, 2)}
+            <Text style={[styles.heroCellValue, { color: pnlColor(status.realizedToday) }]}>
+              {signed(status.realizedToday, 2)}
             </Text>
           </View>
           <View style={styles.heroCell}>
             <Text style={styles.heroCellLabel}>Realized</Text>
-            <Text
-              style={[styles.heroCellValue, { color: pnlColor(status.realized_total) }]}
-            >
-              {signed(status.realized_total, 2)}
+            <Text style={[styles.heroCellValue, { color: pnlColor(status.realizedTotal) }]}>
+              {signed(status.realizedTotal, 2)}
             </Text>
           </View>
           <View style={styles.heroCell}>
@@ -254,17 +232,16 @@ export function DashboardScreen({
       {/* Position */}
       <SectionTitle>Position</SectionTitle>
       <Card>
-        {status.position_qty === 0 ? (
+        {status.positionQty === 0 ? (
           <Empty message="Flat — no open position" />
         ) : (
           <>
             {/* Side is a word, not a colour. Teal and red are reserved for
-                money on this screen — reusing them for direction would put
-                two meanings on one channel. */}
-            <Row label="Side" value={status.position_side.toUpperCase()} />
-            <Row label="Quantity" value={status.position_qty.toFixed(8)} />
-            <Row label="Entry" value={status.avg_price.toFixed(4)} />
-            <Row label="Mark" value={status.last_price.toFixed(4)} />
+                money on this screen. */}
+            <Row label="Side" value={status.positionSide.toUpperCase()} />
+            <Row label="Quantity" value={status.positionQty.toFixed(8)} />
+            <Row label="Entry" value={status.avgPrice.toFixed(4)} />
+            <Row label="Mark" value={status.lastPrice.toFixed(4)} />
             <Row
               label="Unrealized"
               value={signed(status.unrealized, 4)}
@@ -276,46 +253,107 @@ export function DashboardScreen({
 
       {/* Controls */}
       <SectionTitle>Controls</SectionTitle>
-      <View style={styles.controls}>
-        {status.paused ? (
-          <Button
-            label="Resume"
-            variant="primary"
-            onPress={() => control('resume')}
-            busy={pending === 'resume'}
-            disabled={status.killed}
-            style={styles.control}
-          />
-        ) : (
-          <Button
-            label="Pause"
-            variant="warn"
-            onPress={() => control('pause')}
-            busy={pending === 'pause'}
-            disabled={status.killed}
-            style={styles.control}
-          />
-        )}
-        {status.killed ? (
-          <Button
-            label="Revive"
-            variant="primary"
-            onPress={() => control('revive')}
-            busy={pending === 'revive'}
-            style={styles.control}
-          />
-        ) : (
-          <Button
-            label="Kill"
-            variant="danger"
-            onPress={confirmKill}
-            busy={pending === 'kill'}
-            style={styles.control}
-          />
-        )}
-      </View>
+      {isLocal ? (
+        <View style={styles.controls}>
+          {status.running ? (
+            <Button
+              label="Stop bot"
+              variant="warn"
+              onPress={() => act('stop', () => source.stop!(), 'Bot stopped.')}
+              busy={pending === 'stop'}
+              style={styles.control}
+            />
+          ) : (
+            <Button
+              label="Start bot"
+              variant="primary"
+              onPress={() => act('start', () => source.start!(), 'Bot started.')}
+              busy={pending === 'start'}
+              disabled={status.killed}
+              style={styles.control}
+            />
+          )}
+          {status.killed ? (
+            <Button
+              label="Revive"
+              variant="primary"
+              onPress={() => act('revive', () => source.revive(), 'Kill switch released.')}
+              busy={pending === 'revive'}
+              style={styles.control}
+            />
+          ) : (
+            <Button
+              label="Kill"
+              variant="danger"
+              onPress={confirmKill}
+              busy={pending === 'kill'}
+              style={styles.control}
+            />
+          )}
+        </View>
+      ) : (
+        <View style={styles.controls}>
+          {status.paused ? (
+            <Button
+              label="Resume"
+              variant="primary"
+              onPress={() => act('resume', () => source.resume(), 'Resumed.')}
+              busy={pending === 'resume'}
+              disabled={status.killed}
+              style={styles.control}
+            />
+          ) : (
+            <Button
+              label="Pause"
+              variant="warn"
+              onPress={() => act('pause', () => source.pause(), 'Paused.')}
+              busy={pending === 'pause'}
+              disabled={status.killed}
+              style={styles.control}
+            />
+          )}
+          {status.killed ? (
+            <Button
+              label="Revive"
+              variant="primary"
+              onPress={() => act('revive', () => source.revive(), 'Kill switch released.')}
+              busy={pending === 'revive'}
+              style={styles.control}
+            />
+          ) : (
+            <Button
+              label="Kill"
+              variant="danger"
+              onPress={confirmKill}
+              busy={pending === 'kill'}
+              style={styles.control}
+            />
+          )}
+        </View>
+      )}
+
+      {isLocal && !status.killed ? (
+        <View style={styles.controlsSecond}>
+          {status.paused ? (
+            <Button
+              label="Allow new entries"
+              onPress={() => act('resume', () => source.resume(), 'New entries allowed.')}
+              busy={pending === 'resume'}
+              style={styles.control}
+            />
+          ) : (
+            <Button
+              label="Pause new entries"
+              onPress={() => act('pause', () => source.pause(), 'Paused. Exits still run.')}
+              busy={pending === 'pause'}
+              style={styles.control}
+            />
+          )}
+        </View>
+      ) : null}
+
       <Text style={styles.controlHint}>
-        Pause stops new entries but still lets open positions exit. Kill stops
+        Pause stops new entries but still lets an open position exit. Kill stops
         everything, exits included.
       </Text>
 
@@ -323,34 +361,36 @@ export function DashboardScreen({
       <SectionTitle>Runtime</SectionTitle>
       <Card>
         <Row label="Strategy" value={status.strategy} />
-        <Row label="Venue" value={status.venue} />
-        <Row label="Timeframe" value={status.timeframe} />
-        <Row label="Uptime" value={compactDuration(status.uptime_seconds)} />
-        <Row label="Ticks" value={String(status.ticks)} />
+        <Row label="Balance" value={status.equity > 0 ? status.equity.toFixed(2) : '—'} />
+        <Row
+          label="Uptime"
+          value={status.startedAt ? compactDuration((Date.now() - status.startedAt) / 1000) : '—'}
+        />
+        <Row label="Checks" value={String(status.ticks)} />
         <Row
           label="Errors"
           value={String(status.errors)}
           valueColor={status.errors > 0 ? colors.warn : colors.text}
         />
-        <Row label="Orders today" value={String(status.orders_today)} />
+        <Row label="Orders today" value={String(status.ordersToday)} />
       </Card>
 
       {/* History */}
       <SectionTitle>Recent fills</SectionTitle>
       <Card>
         {fills.length === 0 ? (
-          <Empty message="No fills yet" />
+          <Empty message="No trades yet" />
         ) : (
-          fills.map((fill) => (
-            <View key={fill.id} style={styles.fill}>
+          fills.map((f) => (
+            <View key={f.id} style={styles.fill}>
               <View style={styles.fillLeft}>
-                <Text style={styles.fillSide}>{fill.side.toUpperCase()}</Text>
+                <Text style={styles.fillSide}>{f.side.toUpperCase()}</Text>
                 <Text style={styles.fillQty}>
-                  {fill.quantity.toFixed(6)} @ {fill.price.toFixed(2)}
+                  {f.quantity.toFixed(6)} @ {f.price.toFixed(2)}
                 </Text>
               </View>
-              <Text style={[styles.fillPnl, { color: pnlColor(fill.realized) }]}>
-                {signed(fill.realized, 2)}
+              <Text style={[styles.fillPnl, { color: pnlColor(f.realized) }]}>
+                {signed(f.realized, 2)}
               </Text>
             </View>
           ))
@@ -363,7 +403,8 @@ export function DashboardScreen({
         <Text style={styles.updated}>
           {updatedAt ? `Updated ${timeAgo(updatedAt)}` : 'Never updated'}
         </Text>
-        <Button label="Forget connection" onPress={confirmDisconnect} />
+        {isLocal ? <Button label="Settings" onPress={onOpenSettings} /> : null}
+        <Button label={isLocal ? 'Connect to a server instead' : 'Run on this phone instead'} onPress={onSwitchMode} />
       </View>
     </ScrollView>
   );
@@ -381,18 +422,10 @@ const styles = StyleSheet.create({
   },
   loadingText: { color: colors.textMuted, fontSize: 15, textAlign: 'center' },
   retry: { marginTop: space.lg, minWidth: 140 },
-  badges: { flexDirection: 'row', gap: space.sm, marginBottom: space.xs },
-  errorBanner: {
-    color: colors.warn,
-    fontSize: 12,
-    marginBottom: space.xs,
-  },
-  notice: {
-    color: colors.textMuted,
-    fontSize: 12,
-    lineHeight: 17,
-    marginBottom: space.xs,
-  },
+  badges: { flexDirection: 'row', gap: space.sm },
+  sourceLine: { color: colors.textFaint, fontSize: 12, marginBottom: space.xs },
+  errorBanner: { color: colors.warn, fontSize: 12, marginBottom: space.xs },
+  notice: { color: colors.textMuted, fontSize: 12, lineHeight: 17, marginBottom: space.xs },
   heroLabel: {
     color: colors.textMuted,
     fontSize: 12,
@@ -400,12 +433,7 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
     textTransform: 'uppercase',
   },
-  hero: {
-    fontSize: 44,
-    fontWeight: '800',
-    fontFamily: font.mono,
-    marginVertical: space.xs,
-  },
+  hero: { fontSize: 44, fontWeight: '800', fontFamily: font.mono, marginVertical: space.xs },
   heroSplit: {
     flexDirection: 'row',
     borderTopWidth: 1,
@@ -417,13 +445,9 @@ const styles = StyleSheet.create({
   heroCellLabel: { color: colors.textFaint, fontSize: 11, marginBottom: 2 },
   heroCellValue: { fontSize: 15, fontWeight: '700', fontFamily: font.mono },
   controls: { flexDirection: 'row', gap: space.md },
+  controlsSecond: { flexDirection: 'row', gap: space.md, marginTop: space.sm },
   control: { flex: 1 },
-  controlHint: {
-    color: colors.textFaint,
-    fontSize: 12,
-    lineHeight: 17,
-    marginTop: space.sm,
-  },
+  controlHint: { color: colors.textFaint, fontSize: 12, lineHeight: 17, marginTop: space.sm },
   fill: {
     flexDirection: 'row',
     justifyContent: 'space-between',

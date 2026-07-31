@@ -10,7 +10,10 @@ authoritative.
 - `myp1/runner.py` is the only module where components meet
 - `myp1/app.py` is the only module that chooses implementations
 - `myp1/config.py` is the only module that reads `os.environ`
-- `mobile/` talks to the API over HTTP only — never import across it
+- `mobile/src/engine/` is a TypeScript port of the same trading rules; keep it
+  and the Python side decision-for-decision identical, tests included
+- `mobile/src/source/` is the seam letting one screen read a local engine or a
+  remote bot
 - Two API servers share `myp1/api/routes.py`: `server.py` (FastAPI) and
   `lite.py` (stdlib only, for phones). Logic goes in routes.py.
 
@@ -36,7 +39,8 @@ python scripts/backtest.py --synthetic 600          # exercise the real pipeline
 python scripts/demo_server.py                       # real bot + API, replayed candles
 python scripts/demo_server.py --server lite         # the on-device path
 python -m myp1                                      # run (paper by default)
-cd mobile && npm run typecheck && npm start         # the app
+cd mobile && npm test && npm run typecheck          # engine tests + types
+cd mobile && npm start                              # the app
 ```
 
 ## Deployment

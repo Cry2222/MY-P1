@@ -63,9 +63,15 @@ jobs:
         working-directory: mobile
         run: npm run check-sdk
 
+      # The engine decides how money moves and is plain TypeScript, so it is
+      # testable off-device. These are the tests that matter most.
+      - name: Engine tests
+        working-directory: mobile
+        run: npm test
+
       - name: Type check
         working-directory: mobile
-        run: npx tsc --noEmit
+        run: npm run typecheck
 
       # Runs the same Metro + Hermes bundling that Gradle's
       # createBundleReleaseJsAndAssets task does, but in about a minute rather
@@ -180,17 +186,25 @@ jobs:
           body: |
             ## MY-P1 ${{ steps.version.outputs.version }}
 
-            Android APK for the trading bot's control app.
+            Self-contained Android trading app. The strategy runs inside the
+            app — nothing else to install.
 
             **Install**: download the `.apk` below, open it on your phone, and
             allow installation from unknown sources when prompted.
 
-            **Connect**: the app needs a running bot with its control API
-            enabled. Set `MYP1_API_ENABLED=true` and `MYP1_API_TOKEN` in the
-            bot's `.env`, then enter the address and token in the app.
+            **Use it**: open the app, choose *Run on this phone*, and it starts
+            paper trading against live market prices. Settings let you change
+            the exchange, symbol, timeframe and every risk limit.
 
-            - Bot on this phone (Termux): `http://127.0.0.1:8333` — see `docs/on-device.md`
-            - Bot on a server: use its Tailscale address — see `docs/deployment.md`
+            Paper trading only: simulated fills, no exchange account, no API
+            keys, no real money.
+
+            Keeping it running in the background needs the permanent
+            notification Android requires for this — that notification is the
+            honest signal that something on the phone is trading.
+
+            You can also point it at a Python bot on a server instead; see
+            `docs/deployment.md`.
 
             Signing: `${{ steps.keystore.outputs.signed }}`. A debug-signed APK
             installs fine but cannot be upgraded in place by a release-signed

@@ -1,0 +1,13 @@
+{
+  "//": "Tests run in Node, not React Native. The app's config uses the react-native resolution condition, which cannot resolve node: builtins — so the engine tests get their own config rather than weakening the app's.",
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "moduleResolution": "nodenext",
+    "module": "nodenext",
+    "customConditions": null,
+    "types": ["node"],
+    "noEmit": true,
+    "allowImportingTsExtensions": true
+  },
+  "include": ["src/engine/**/*.ts"]
+}

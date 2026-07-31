@@ -16,7 +16,7 @@ import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import Svg, { Circle, Defs, LinearGradient, Path, Stop } from 'react-native-svg';
 
-import type { Candle } from '../api/types';
+import type { Candle } from '../engine/models';
 import { colors, font, signed, space } from '../theme';
 
 interface Props {
@@ -61,7 +61,7 @@ export function Sparkline({ candles, height = 96, symbol }: Props) {
     );
   }
 
-  const values = candles.map((c) => c.c);
+  const values = candles.map((c) => c.close);
   const { line, area, last } = buildPath(values, WIDTH, height, PAD);
 
   const first = values[0];

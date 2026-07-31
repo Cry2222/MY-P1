@@ -6,26 +6,33 @@
     "@expo/metro-runtime": "~57.0.8",
     "buffer": "^6.0.3",
     "expo": "~57.0.9",
+    "expo-crypto": "~57.0.1",
+    "expo-keep-awake": "~57.0.1",
     "expo-secure-store": "~57.0.1",
+    "expo-sqlite": "~57.0.1",
     "expo-status-bar": "~57.0.1",
     "expo-system-ui": "~57.0.2",
     "react": "19.2.3",
     "react-dom": "19.2.3",
     "react-native": "0.86.2",
+    "react-native-background-actions": "^4.1.0",
     "react-native-svg": "15.15.4",
     "react-native-web": "~0.21.0"
   },
   "devDependencies": {
+    "@types/node": "^26.1.2",
     "@types/react": "~19.2.2",
+    "tsx": "^4.23.1",
     "typescript": "~6.0.3"
   },
   "scripts": {
     "start": "expo start",
     "android": "expo run:android",
     "web": "expo start --web",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.test.json",
     "bundle-check": "expo export --platform android --output-dir /tmp/myp1-bundle-check",
-    "check-sdk": "node scripts/check-sdk-versions.mjs"
+    "check-sdk": "node scripts/check-sdk-versions.mjs",
+    "test": "node --import tsx --test src/engine/*.test.ts"
   },
   "private": true
 }

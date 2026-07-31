@@ -34,7 +34,8 @@
     "backgroundColor": "#0B0F14",
     "plugins": [
       "expo-system-ui",
-      "./plugins/withLoopbackCleartext.js"
+      "./plugins/withLoopbackCleartext.js",
+      "./plugins/withForegroundService.js"
     ],
     "platforms": [
       "android"

@@ -1,14 +1,39 @@
 # MY-P1 mobile
 
-React Native (Expo) app for watching and controlling the bot from an Android
-phone. **Android only** — the bot itself cannot run on iOS (no Termux
-equivalent, and iOS terminates background processes), so a companion iOS app
-would have nothing to pair with.
+Self-contained Android trading app. The strategy runs **inside the app** —
+install the APK and it trades, with nothing else to set up.
 
-It talks to MY-P1 only over the HTTP control API — no shared code, no shared
-database. That is the same replaceable-seam rule the bot uses internally: the
-bot runs perfectly well with this app deleted, and this app can be replaced
-without touching the bot.
+**Android only.** iOS terminates long-running background processes, so a
+trading loop cannot survive there.
+
+## Two modes
+
+**Run on this phone** (default) — a TypeScript engine in `src/engine/` does the
+whole pipeline locally: market data → strategy → position diff → risk →
+paper execution → journal. Same architecture as the Python bot, same seams,
+ported decision for decision so the two can be compared rather than assumed
+equal.
+
+**Connect to a server** — drive a Python bot over its HTTP control API
+instead. Kept because the trade-off is real: a phone that runs out of battery
+stops trading; a server does not.
+
+Both go through `BotSource` (`src/source/`), so the dashboard never knows
+which it is talking to.
+
+## Background execution
+
+Android suspends a normal app within minutes of it leaving the screen. The
+engine therefore runs under a **foreground service** — the mechanism music
+players use — which requires a permanent notification. That notification is
+not a nuisance to hide: it is the honest signal that something on this phone
+is trading.
+
+`plugins/withForegroundService.js` declares the service type Android 14+
+requires. It uses `specialUse` rather than the more obvious `dataSync`,
+because since API 35 Android caps `dataSync` services at about six hours a
+day and then stops them — which for a trading loop means quietly ceasing to
+manage an open position, the worst failure mode there is.
 
 ## Run it
 
@@ -86,10 +111,17 @@ src/
 ## Checks
 
 ```bash
+npm test               # 49 engine tests, off-device
 npm run check-sdk      # Expo-managed packages match the installed SDK
 npm run typecheck
 npm run bundle-check   # Metro + Hermes production bundle
 ```
+
+`npm test` covers the parts that decide how money moves — position
+accounting, indicators, the strategy and the risk gate — with `node --test`.
+They mirror the Python suite's cases, so a disagreement between the two
+engines shows up as a failing test rather than a different balance.
+
 
 `check-sdk` is the one that matters most. A native module built against a
 different SDK version compiles, packages and installs perfectly, then crashes

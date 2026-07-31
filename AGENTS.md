@@ -31,9 +31,18 @@ myp1/
   runner.py              the loop; owns no domain logic
   app.py                 composition root; the only module that picks implementations
 
-mobile/                  Expo app. Talks to the API over HTTP only.
-                         Never import across this boundary in either direction.
+mobile/                  Android app. Two ways to get data, one screen:
+  src/engine/            TypeScript port of the bot; runs on the phone
+  src/source/            BotSource seam — local engine or remote HTTP
+  src/screens/           UI; never talks to an exchange directly
 ```
+
+`mobile/src/engine/` is a **second implementation of the same trading rules**.
+It mirrors the Python modules one-to-one — models, indicators, strategy, risk,
+paper venue, journal, runner — and its tests mirror the Python cases. Change a
+trading rule in one and the other is now wrong: change both, and make the
+tests say so. The risk engine especially must stay decision-for-decision
+identical.
 
 A change that makes two components import each other has broken the design,
 even if the tests pass.
@@ -85,7 +94,7 @@ commit messages, or logs. `.env` is gitignored; keep it that way.
 ```bash
 pytest                          # 196 tests, no network
 ruff check .
-cd mobile && npm run typecheck
+cd mobile && npm test && npm run typecheck
 ```
 
 Every test runs offline. `ReplayMarketData` + `PaperVenue` exercise the real
