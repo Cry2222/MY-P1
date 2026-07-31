@@ -88,8 +88,18 @@ export function Button({
   busy?: boolean;
   style?: ViewStyle;
 }) {
-  const tint = {
+  // Border and label are separate on purpose. A neutral button should sit
+  // back visually, but its label still has to be readable — tinting the text
+  // with the recessive border colour makes it almost invisible.
+  const border = {
     default: colors.border,
+    primary: colors.accent,
+    danger: colors.danger,
+    warn: colors.warn,
+  }[variant];
+
+  const label_color = {
+    default: colors.text,
     primary: colors.accent,
     danger: colors.danger,
     warn: colors.warn,
@@ -107,17 +117,17 @@ export function Button({
       style={({ pressed }) => [
         styles.button,
         {
-          borderColor: tint,
-          backgroundColor: pressed ? tint : 'transparent',
+          borderColor: border,
+          backgroundColor: pressed ? colors.surfaceRaised : 'transparent',
           opacity: inactive ? 0.4 : 1,
         },
         style,
       ]}
     >
       {busy ? (
-        <ActivityIndicator size="small" color={tint} />
+        <ActivityIndicator size="small" color={label_color} />
       ) : (
-        <Text style={[styles.buttonText, { color: tint }]}>{label}</Text>
+        <Text style={[styles.buttonText, { color: label_color }]}>{label}</Text>
       )}
     </Pressable>
   );

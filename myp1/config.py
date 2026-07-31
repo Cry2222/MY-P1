@@ -88,6 +88,9 @@ class ApiConfig:
     token: str | None = None
     docs_enabled: bool = False
     cors_origins: tuple[str, ...] = ()
+    # auto | fastapi | lite. "auto" falls back to the dependency-free server
+    # when FastAPI is not installed, which is the on-device case.
+    server: str = "auto"
 
     def validate(self) -> None:
         if not self.enabled:
@@ -101,6 +104,10 @@ class ApiConfig:
             raise ConfigError("MYP1_API_TOKEN must be at least 24 characters")
         if not 1 <= self.port <= 65535:
             raise ConfigError(f"MYP1_API_PORT out of range: {self.port}")
+        if self.server not in {"auto", "fastapi", "lite"}:
+            raise ConfigError(
+                f"MYP1_API_SERVER must be auto, fastapi or lite, got {self.server!r}"
+            )
 
 
 @dataclass(frozen=True)
@@ -223,6 +230,7 @@ def load_config() -> Config:
             port=_int("MYP1_API_PORT", 8333),
             token=_env("MYP1_API_TOKEN"),
             docs_enabled=_bool("MYP1_API_DOCS", False),
+            server=(_env("MYP1_API_SERVER", "auto") or "auto").lower(),
             cors_origins=tuple(
                 origin.strip()
                 for origin in (_env("MYP1_API_CORS_ORIGINS", "") or "").split(",")

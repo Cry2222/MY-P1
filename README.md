@@ -42,7 +42,7 @@ module that knows which concrete implementation each seam gets.
 ```bash
 git clone https://github.com/cry2222/my-p1.git && cd my-p1
 python3 -m venv .venv && source .venv/bin/activate
-pip install -e ".[dev]"
+pip install -e ".[dev]"   # or ".[all]" to just run it
 
 cp .env.example .env      # defaults are paper mode; edit as you like
 python -m myp1
@@ -168,8 +168,9 @@ tells you about the past; paper mode tells you about your plumbing.
 
 ## Deploying
 
-The bot must not stop while it holds a position, so it belongs on a server, not
-a laptop. Docker Compose on a small VPS is the recommended setup:
+The bot must not stop while it holds a position. Two ways to satisfy that:
+
+**On a server** (recommended for live trading) — Docker Compose on a small VPS:
 
 ```bash
 cp .env.example .env && nano .env
@@ -177,13 +178,29 @@ docker compose up -d
 ```
 
 A `systemd` unit is in [`deploy/`](deploy/) if you would rather not use Docker.
-Full guide, including the pre-live checklist:
-[`docs/deployment.md`](docs/deployment.md).
+Full guide and pre-live checklist: [`docs/deployment.md`](docs/deployment.md).
+
+**On your phone** (no server, Android only) — the bot runs on the device under
+Termux and the app connects to `127.0.0.1`. Nothing touches a network:
+
+```bash
+pkg install -y git && git clone https://github.com/cry2222/my-p1.git ~/MY-P1
+cd ~/MY-P1 && bash deploy/termux/install.sh
+```
+
+This needs the dependency-free API server, because FastAPI's pydantic-core
+cannot usually be compiled under Termux. The bot detects that and switches
+automatically — both servers speak the identical protocol, and the contract
+tests run against both to keep it that way.
+
+Read [`docs/on-device.md`](docs/on-device.md) before trusting it with real
+money: Android will try to kill the process, and a dead battery is a stranded
+position. It is a genuine option, but the reliability is yours to own.
 
 ## Development
 
 ```bash
-pytest              # 118 tests, no network required
+pytest              # 196 tests, no network required
 ruff check .
 cd mobile && npm run typecheck
 ```

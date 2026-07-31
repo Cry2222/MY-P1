@@ -22,6 +22,9 @@ import { Button, Card } from '../components/primitives';
 import { isSecureStorageAvailable } from '../storage';
 import { colors, font, radius, space } from '../theme';
 
+/** The bot running on this same phone under Termux — see docs/on-device.md. */
+const LOCAL_URL = 'http://127.0.0.1:8333';
+
 export function SetupScreen({
   onConnected,
   initial,
@@ -29,7 +32,7 @@ export function SetupScreen({
   onConnected: (connection: Connection) => void;
   initial?: Connection | null;
 }) {
-  const [url, setUrl] = useState(initial?.baseUrl ?? 'http://127.0.0.1:8333');
+  const [url, setUrl] = useState(initial?.baseUrl ?? LOCAL_URL);
   const [token, setToken] = useState(initial?.token ?? '');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -65,7 +68,7 @@ export function SetupScreen({
           <TextInput
             value={url}
             onChangeText={setUrl}
-            placeholder="http://100.x.y.z:8333"
+            placeholder="http://127.0.0.1:8333"
             placeholderTextColor={colors.textFaint}
             autoCapitalize="none"
             autoCorrect={false}
@@ -73,10 +76,25 @@ export function SetupScreen({
             style={styles.input}
             accessibilityLabel="Server address"
           />
+          <View style={styles.presets}>
+            <Button
+              label="This phone"
+              onPress={() => setUrl(LOCAL_URL)}
+              style={styles.preset}
+            />
+            <Button
+              label="My server"
+              onPress={() => setUrl('http://100.')}
+              style={styles.preset}
+            />
+          </View>
           <Text style={styles.hint}>
-            Your bot&apos;s API. If you followed the deployment guide this is its
-            Tailscale address — the API binds to loopback and is not meant to be
-            exposed to the open internet.
+            <Text style={styles.hintStrong}>This phone</Text> — the bot is
+            running here under Termux. Nothing leaves the device.
+            {'\n'}
+            <Text style={styles.hintStrong}>My server</Text> — the bot is on a
+            VPS. Use its Tailscale address; the API binds to loopback and is not
+            meant to face the open internet.
           </Text>
 
           <Text style={[styles.label, styles.labelSpaced]}>API token</Text>
@@ -165,6 +183,19 @@ const styles = StyleSheet.create({
     fontSize: 12,
     marginTop: space.xs,
     lineHeight: 17,
+  },
+  hintStrong: {
+    color: colors.textMuted,
+    fontWeight: '700',
+  },
+  presets: {
+    flexDirection: 'row',
+    gap: space.sm,
+    marginTop: space.sm,
+  },
+  preset: {
+    flex: 1,
+    minHeight: 40,
   },
   connect: { marginTop: space.xl },
   error: {

@@ -14,7 +14,6 @@
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  Alert,
   AppState,
   RefreshControl,
   ScrollView,
@@ -25,6 +24,7 @@ import {
 
 import { ApiError, api } from '../api/client';
 import type { Candle, Connection, FillRow, Status } from '../api/types';
+import { ConfirmDialog, type ConfirmSpec } from '../components/ConfirmDialog';
 import { Sparkline } from '../components/Sparkline';
 import {
   Badge,
@@ -63,6 +63,8 @@ export function DashboardScreen({
   const [updatedAt, setUpdatedAt] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
   const [pending, setPending] = useState<string | null>(null);
+  const [confirm, setConfirm] = useState<ConfirmSpec | null>(null);
+  const [notice, setNotice] = useState('');
   const [, setTick] = useState(0);
 
   const mounted = useRef(true);
@@ -128,12 +130,13 @@ export function DashboardScreen({
     action: 'pause' | 'resume' | 'kill' | 'revive',
   ): Promise<void> {
     setPending(action);
+    setNotice('');
     try {
       const result = await api[action](connection);
       await load();
-      if (action === 'kill') Alert.alert('Kill switch engaged', result.message);
+      if (action === 'kill') setNotice(result.message);
     } catch (e) {
-      Alert.alert('Failed', e instanceof ApiError ? e.message : 'Request failed');
+      setNotice(e instanceof ApiError ? e.message : 'Request failed');
     } finally {
       setPending(null);
     }
@@ -141,22 +144,25 @@ export function DashboardScreen({
 
   function confirmKill() {
     // A kill switch reached by one tap on a phone in a pocket is a hazard.
-    Alert.alert(
-      'Engage kill switch?',
-      'This halts ALL orders including exits. Any open position becomes yours '
-        + 'to close by hand on the exchange.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Kill', style: 'destructive', onPress: () => control('kill') },
-      ],
-    );
+    setConfirm({
+      title: 'Engage kill switch?',
+      body:
+        'This halts ALL orders including exits. Any open position becomes '
+        + 'yours to close by hand on the exchange.',
+      confirmLabel: 'Kill',
+      variant: 'danger',
+      onConfirm: () => control('kill'),
+    });
   }
 
   function confirmDisconnect() {
-    Alert.alert('Forget this connection?', 'The saved token will be removed from this device.', [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Forget', style: 'destructive', onPress: onDisconnect },
-    ]);
+    setConfirm({
+      title: 'Forget this connection?',
+      body: 'The saved token will be removed from this device.',
+      confirmLabel: 'Forget',
+      variant: 'danger',
+      onConfirm: onDisconnect,
+    });
   }
 
   const stale = updatedAt > 0 && Date.now() - updatedAt > STALE_MS;
@@ -206,6 +212,7 @@ export function DashboardScreen({
       </View>
 
       {error ? <Text style={styles.errorBanner}>{error}</Text> : null}
+      {notice ? <Text style={styles.notice}>{notice}</Text> : null}
 
       {/* The money — hero figure */}
       <Card>
@@ -350,6 +357,8 @@ export function DashboardScreen({
         )}
       </Card>
 
+      <ConfirmDialog spec={confirm} onDismiss={() => setConfirm(null)} />
+
       <View style={styles.footer}>
         <Text style={styles.updated}>
           {updatedAt ? `Updated ${timeAgo(updatedAt)}` : 'Never updated'}
@@ -376,6 +385,12 @@ const styles = StyleSheet.create({
   errorBanner: {
     color: colors.warn,
     fontSize: 12,
+    marginBottom: space.xs,
+  },
+  notice: {
+    color: colors.textMuted,
+    fontSize: 12,
+    lineHeight: 17,
     marginBottom: space.xs,
   },
   heroLabel: {

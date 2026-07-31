@@ -21,7 +21,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from myp1.api.server import create_app, serve  # noqa: E402
+from myp1.api import resolve_backend  # noqa: E402
 from myp1.config import ApiConfig, Config  # noqa: E402
 from myp1.core.models import Candle  # noqa: E402
 from myp1.execution.paper import PaperVenue  # noqa: E402
@@ -60,6 +60,8 @@ async def main() -> None:
                         help="ticks to run before serving, so there is history")
     parser.add_argument("--cors", default="*",
                         help="comma-separated origins for the web preview")
+    parser.add_argument("--server", default="auto", choices=["auto", "fastapi", "lite"],
+                        help="API backend; 'lite' has no dependencies")
     args = parser.parse_args()
 
     config = Config(
@@ -97,14 +99,26 @@ async def main() -> None:
         token=args.token,
         docs_enabled=True,
         cors_origins=tuple(o.strip() for o in args.cors.split(",") if o.strip()),
+        server=args.server,
     )
-    app = create_app(runner, api_config)
 
-    print(f"\n  API   http://{args.host}:{args.port}")
-    print(f"  docs  http://{args.host}:{args.port}/api/docs")
-    print(f"  token {args.token}\n")
+    backend = resolve_backend(api_config.server)
+    if backend == "fastapi":
+        from myp1.api.server import create_app, serve
 
-    await asyncio.gather(runner.run(), serve(app, args.host, args.port))
+        api_coro = serve(create_app(runner, api_config), args.host, args.port)
+    else:
+        from myp1.api.lite import serve as serve_lite
+
+        api_coro = serve_lite(runner, api_config)
+
+    print(f"\n  API     http://{args.host}:{args.port}")
+    print(f"  backend {backend}")
+    if backend == "fastapi":
+        print(f"  docs    http://{args.host}:{args.port}/api/docs")
+    print(f"  token   {args.token}\n")
+
+    await asyncio.gather(runner.run(), api_coro)
 
 
 if __name__ == "__main__":
