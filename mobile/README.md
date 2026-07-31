@@ -87,7 +87,16 @@ src/
 
 ```bash
 npm run typecheck
+npm run bundle-check   # Metro + Hermes production bundle
 ```
+
+`bundle-check` runs the same bundling Gradle does when building a release APK.
+It catches missing modules in about a minute; without it the same failure
+surfaces seven minutes into a Gradle run as a Java stack trace.
+
+`buffer` is a direct dependency for that reason: `react-native-svg` imports it
+in `fetchData`, and while Expo Go tolerates the missing polyfill, a production
+bundle does not.
 
 ## Building an APK
 

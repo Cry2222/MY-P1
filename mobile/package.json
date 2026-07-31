@@ -4,6 +4,7 @@
   "main": "index.ts",
   "dependencies": {
     "@expo/metro-runtime": "^57.0.8",
+    "buffer": "^6.0.3",
     "expo": "~57.0.9",
     "expo-secure-store": "~15.0.7",
     "expo-status-bar": "~57.0.1",
@@ -22,7 +23,8 @@
     "start": "expo start",
     "android": "expo run:android",
     "web": "expo start --web",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "bundle-check": "expo export --platform android --output-dir /tmp/myp1-bundle-check"
   },
   "private": true
 }
