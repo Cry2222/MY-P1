@@ -86,9 +86,26 @@ src/
 ## Checks
 
 ```bash
+npm run check-sdk      # Expo-managed packages match the installed SDK
 npm run typecheck
 npm run bundle-check   # Metro + Hermes production bundle
 ```
+
+`check-sdk` is the one that matters most. A native module built against a
+different SDK version compiles, packages and installs perfectly, then crashes
+the app the moment it launches:
+
+```
+NoClassDefFoundError: expo/modules/kotlin/types/AnyTypeProvider
+  at expo.modules.securestore.SecureStoreModule.definition
+```
+
+That was `expo-secure-store` 15.x sitting beside `expo-modules-core` 57.x —
+an SDK generation apart, because the version had been written into
+`package.json` by hand. **Always add packages with `npx expo install <name>`,
+never by editing the version.** `expo install --check` is the canonical tool
+but needs network; this script reads the SDK's own
+`bundledNativeModules.json`, so it works offline too.
 
 `bundle-check` runs the same bundling Gradle does when building a release APK.
 It catches missing modules in about a minute; without it the same failure

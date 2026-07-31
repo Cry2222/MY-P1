@@ -56,6 +56,13 @@ jobs:
         working-directory: mobile
         run: npm ci
 
+      # A native module built against a different SDK compiles and packages
+      # fine, then crashes the app on launch. Nothing later in this workflow
+      # catches it, so it has to be caught here.
+      - name: Check Expo SDK versions
+        working-directory: mobile
+        run: npm run check-sdk
+
       - name: Type check
         working-directory: mobile
         run: npx tsc --noEmit

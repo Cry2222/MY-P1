@@ -152,5 +152,11 @@ Uninstall it first.
 **Build fails on `expo prebuild`** — delete `mobile/android/` and retry;
 a partially generated project does not always regenerate cleanly.
 
+**App installs but crashes immediately** — almost always an Expo SDK version
+mismatch. Run `npm run check-sdk` in `mobile/`. A native module built against
+a different SDK compiles and packages fine and only fails at launch, with a
+`NoClassDefFoundError` naming an Expo class. Fix with `npx expo install
+<package>`; never write the version by hand.
+
 **Gradle runs out of memory** — add to `mobile/android/gradle.properties`:
 `org.gradle.jvmargs=-Xmx4g`

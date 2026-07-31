@@ -129,6 +129,11 @@ figure carries a sign, every state carries a label, so colour is never the only
 channel. If you change a colour, re-validate it against the dark surface rather
 than eyeballing it; the numbers and the reasoning are in `mobile/src/theme.ts`.
 
+Add mobile packages with `npx expo install <name>`, never by editing a version
+into `package.json`. A version an SDK generation off compiles, packages and
+installs, then crashes on launch — `npm run check-sdk` guards this and runs in
+CI before anything expensive.
+
 Do not use `Alert.alert` for anything that matters. It is a no-op with buttons
 under react-native-web, which once meant the kill switch silently did nothing
 in the web preview. `ConfirmDialog` behaves identically on every platform and

@@ -3,17 +3,17 @@
   "version": "1.0.0",
   "main": "index.ts",
   "dependencies": {
-    "@expo/metro-runtime": "^57.0.8",
+    "@expo/metro-runtime": "~57.0.8",
     "buffer": "^6.0.3",
     "expo": "~57.0.9",
-    "expo-secure-store": "~15.0.7",
+    "expo-secure-store": "~57.0.1",
     "expo-status-bar": "~57.0.1",
-    "expo-system-ui": "^57.0.2",
+    "expo-system-ui": "~57.0.2",
     "react": "19.2.3",
-    "react-dom": "^19.2.3",
+    "react-dom": "19.2.3",
     "react-native": "0.86.2",
-    "react-native-svg": "15.13.0",
-    "react-native-web": "^0.21.2"
+    "react-native-svg": "15.15.4",
+    "react-native-web": "~0.21.0"
   },
   "devDependencies": {
     "@types/react": "~19.2.2",
@@ -24,7 +24,8 @@
     "android": "expo run:android",
     "web": "expo start --web",
     "typecheck": "tsc --noEmit",
-    "bundle-check": "expo export --platform android --output-dir /tmp/myp1-bundle-check"
+    "bundle-check": "expo export --platform android --output-dir /tmp/myp1-bundle-check",
+    "check-sdk": "node scripts/check-sdk-versions.mjs"
   },
   "private": true
 }
