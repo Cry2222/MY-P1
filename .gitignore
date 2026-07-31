@@ -1,0 +1,33 @@
+# Secrets — never commit these
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+
+# Runtime state
+data/
+*.sqlite3
+*.sqlite3-wal
+*.sqlite3-shm
+
+# Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Acme workspace (Helix scratch area, per the suite convention)
+workspace/
+
+# Editors / OS
+.DS_Store
+.idea/
+.vscode/
